@@ -1151,6 +1151,7 @@ void OctomapServer::reconfigureCallback(octomap_server::OctomapServerConfig& con
           config.ground_filter_angle = m_groundFilterAngle;
           config.ground_filter_plane_distance = m_groundFilterPlaneDistance;
           config.sensor_model_max_range = m_maxRange;
+          config.sensor_model_occupancy_threshold = m_octree->getOccupancyThres();
           config.sensor_model_hit = m_octree->getProbHit();
           config.sensor_model_miss = m_octree->getProbMiss();
           config.sensor_model_min = m_octree->getClampingThresMin();
