@@ -246,8 +246,6 @@ protected:
 
   bool m_compressMap;
 
-  bool m_initConfig;
-
   // downprojected 2D map:
   bool m_incrementalUpdate;
   nav_msgs::OccupancyGrid m_gridmap;

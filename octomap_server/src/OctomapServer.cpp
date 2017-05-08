@@ -67,10 +67,9 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_filterSpeckles(false), m_filterGroundPlane(false),
   m_groundFilterDistance(0.04), m_groundFilterAngle(0.15), m_groundFilterPlaneDistance(0.07),
   m_compressMap(true),
-  m_incrementalUpdate(false),
-  m_initConfig(true)
+  m_incrementalUpdate(false)
 {
-  double probHit, probMiss, thresMin, thresMax;
+  double probThreshold, probHit, probMiss, thresMin, thresMax;
 
   ros::NodeHandle private_nh(private_nh_);
   private_nh.param("frame_id", m_worldFrameId, m_worldFrameId);
@@ -102,6 +101,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   private_nh.param("sensor_model/max_range", m_maxRange, m_maxRange);
 
   private_nh.param("resolution", m_res, m_res);
+  private_nh.param("sensor_model/occupancy_threshold", probThreshold, 0.5);
   private_nh.param("sensor_model/hit", probHit, 0.7);
   private_nh.param("sensor_model/miss", probMiss, 0.4);
   private_nh.param("sensor_model/min", thresMin, 0.12);
@@ -131,6 +131,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
 
   // initialize octomap object & params
   m_octree = new OcTreeT(m_res);
+  m_octree->setOccupancyThres(probThreshold);
   m_octree->setProbHit(probHit);
   m_octree->setProbMiss(probMiss);
   m_octree->setClampingThresMin(thresMin);
@@ -1145,31 +1146,21 @@ void OctomapServer::reconfigureCallback(octomap_server::OctomapServerConfig& con
 
     // Parameters with a namespace require an special treatment at the beginning, as dynamic reconfigure
     // will overwrite them because the server is not able to match parameters' names.
-    if (m_initConfig){
-		// If parameters do not have the default value, dynamic reconfigure server should be updated.
-		if(!is_equal(m_groundFilterDistance, 0.04))
+    if (level == ~0 && config.default_parameters) {
           config.ground_filter_distance = m_groundFilterDistance;
-		if(!is_equal(m_groundFilterAngle, 0.15))
           config.ground_filter_angle = m_groundFilterAngle;
-	    if(!is_equal( m_groundFilterPlaneDistance, 0.07))
           config.ground_filter_plane_distance = m_groundFilterPlaneDistance;
-        if(!is_equal(m_maxRange, -1.0))
           config.sensor_model_max_range = m_maxRange;
-        if(!is_equal(m_octree->getProbHit(), 0.7))
           config.sensor_model_hit = m_octree->getProbHit();
-	    if(!is_equal(m_octree->getProbMiss(), 0.4))
           config.sensor_model_miss = m_octree->getProbMiss();
-		if(!is_equal(m_octree->getClampingThresMin(), 0.12))
           config.sensor_model_min = m_octree->getClampingThresMin();
-		if(!is_equal(m_octree->getClampingThresMax(), 0.97))
           config.sensor_model_max = m_octree->getClampingThresMax();
-        m_initConfig = false;
 
-	    boost::recursive_mutex::scoped_lock reconf_lock(m_config_mutex);
-        m_reconfigureServer.updateConfig(config);
+          boost::recursive_mutex::scoped_lock reconf_lock(m_config_mutex);
+          m_reconfigureServer.updateConfig(config);
     }
     else{
-	  m_groundFilterDistance      = config.ground_filter_distance;
+      m_groundFilterDistance      = config.ground_filter_distance;
       m_groundFilterAngle         = config.ground_filter_angle;
       m_groundFilterPlaneDistance = config.ground_filter_plane_distance;
       m_maxRange                  = config.sensor_model_max_range;
@@ -1177,13 +1168,20 @@ void OctomapServer::reconfigureCallback(octomap_server::OctomapServerConfig& con
       m_octree->setClampingThresMax(config.sensor_model_max);
 
      // Checking values that might create unexpected behaviors.
+      if (config.sensor_model_occupancy_threshold > config.sensor_model_max)
+        config.sensor_model_occupancy_threshold = config.sensor_model_max;
+      if (config.sensor_model_occupancy_threshold < config.sensor_model_min)
+        config.sensor_model_occupancy_threshold = config.sensor_model_min;
+      m_octree->setOccupancyThres(config.sensor_model_occupancy_threshold);
       if (is_equal(config.sensor_model_hit, 1.0))
-		config.sensor_model_hit -= 1.0e-6;
+        config.sensor_model_hit -= 1.0e-6;
       m_octree->setProbHit(config.sensor_model_hit);
-	  if (is_equal(config.sensor_model_miss, 0.0))
-		config.sensor_model_miss += 1.0e-6;
+      if (is_equal(config.sensor_model_miss, 0.0))
+        config.sensor_model_miss += 1.0e-6;
       m_octree->setProbMiss(config.sensor_model_miss);
-	}
+    }
+    // reset default_parameters flag
+    config.default_parameters = false;
   }
   publishAll();
 }
